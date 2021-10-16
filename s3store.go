@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"io"
-	"log"
 	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -174,7 +173,6 @@ func (s *Store) List(ctx context.Context, start string, f func(string) error) er
 				return err
 			}
 			if key < start {
-				log.Printf("MJF :: skip %q", key)
 				continue
 			}
 			if err := f(key); err == blob.ErrStopListing {
