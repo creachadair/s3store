@@ -30,7 +30,7 @@ func Opener(_ context.Context, addr string) (blob.Store, error) {
 	}
 	parts = strings.SplitN(bucketRegion, ":", 2)
 	if len(parts) != 2 {
-		return nil, errors.New("S3 address requires bucket and region")
+		return nil, errors.New("invalid S3 address, requires bucket:region")
 	}
 	return New(parts[0], parts[1], &Options{KeyPrefix: prefix})
 }
