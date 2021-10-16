@@ -17,6 +17,24 @@ import (
 	"github.com/creachadair/ffs/blob"
 )
 
+// Opener constructs a store from an address comprising a bucket name and
+// storage region, and an optional prefix, in the format:
+//
+//    [prefix@]bucket;region
+//
+func Opener(_ context.Context, addr string) (blob.Store, error) {
+	parts := strings.SplitN(addr, "@", 2)
+	prefix, bucketRegion := "", parts[0]
+	if len(parts) == 2 {
+		prefix, bucketRegion = parts[0], parts[1]
+	}
+	parts = strings.SplitN(bucketRegion, ":", 2)
+	if len(parts) != 2 {
+		return nil, errors.New("S3 address requires bucket and region")
+	}
+	return New(parts[0], parts[1], &Options{KeyPrefix: prefix})
+}
+
 // A Store implements the blob.Store interface on an S3 bucket.
 // Since S3 does not support empty keys, access to an empty key will
 // report blob.ErrKeyNotFound as required by the interface.
