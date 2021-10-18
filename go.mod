@@ -4,7 +4,7 @@ go 1.17
 
 require (
 	github.com/aws/aws-sdk-go v1.41.4
-	github.com/creachadair/ffs v0.0.0-20211016041832-d69e1f0e4a57
+	github.com/creachadair/ffs v0.0.0-20211017235934-b1f62fbd6ff5
 )
 
 require (
