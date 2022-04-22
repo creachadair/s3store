@@ -1,5 +1,5 @@
-github.com/aws/aws-sdk-go v1.43.43 h1:1L06qzQvl4aC3Skfh5rV7xVhGHjIZoHcqy16NoyQ1o4=
-github.com/aws/aws-sdk-go v1.43.43/go.mod h1:y4AeaBuwd2Lk+GepC1E9v0qOiTws0MIWAX4oIKwKHZo=
+github.com/aws/aws-sdk-go v1.43.44 h1:t+97cY4ScE/czlNlK5iikUGi7w1fC0uop1OUalDIRT4=
+github.com/aws/aws-sdk-go v1.43.44/go.mod h1:y4AeaBuwd2Lk+GepC1E9v0qOiTws0MIWAX4oIKwKHZo=
 github.com/cespare/xxhash/v2 v2.1.2/go.mod h1:VGX0DQ3Q6kWi7AoAeZDth3/j3BFtOZR5XLFGgcrjCOs=
 github.com/creachadair/atomicfile v0.2.5/go.mod h1:BRq8Une6ckFneYXZQ+kO7p1ZZP3I2fzVzf28JxrIkBc=
 github.com/creachadair/ffs v0.0.0-20220416213235-6388f88050e4 h1:7VEFm7fDVfeOrUYIsn2lTa3Qs0rvS6+fuEmB/e+1U/E=
