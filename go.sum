@@ -1,9 +1,9 @@
-github.com/aws/aws-sdk-go v1.43.44 h1:t+97cY4ScE/czlNlK5iikUGi7w1fC0uop1OUalDIRT4=
-github.com/aws/aws-sdk-go v1.43.44/go.mod h1:y4AeaBuwd2Lk+GepC1E9v0qOiTws0MIWAX4oIKwKHZo=
+github.com/aws/aws-sdk-go v1.43.45 h1:2708Bj4uV+ym62MOtBnErm/CDX61C4mFe9V2gXy1caE=
+github.com/aws/aws-sdk-go v1.43.45/go.mod h1:y4AeaBuwd2Lk+GepC1E9v0qOiTws0MIWAX4oIKwKHZo=
 github.com/cespare/xxhash/v2 v2.1.2/go.mod h1:VGX0DQ3Q6kWi7AoAeZDth3/j3BFtOZR5XLFGgcrjCOs=
 github.com/creachadair/atomicfile v0.2.5/go.mod h1:BRq8Une6ckFneYXZQ+kO7p1ZZP3I2fzVzf28JxrIkBc=
-github.com/creachadair/ffs v0.0.0-20220416213235-6388f88050e4 h1:7VEFm7fDVfeOrUYIsn2lTa3Qs0rvS6+fuEmB/e+1U/E=
-github.com/creachadair/ffs v0.0.0-20220416213235-6388f88050e4/go.mod h1:WXuemzxJi6QBMNqzrg2dzCO4EhxZeFV203bf8CfYUUw=
+github.com/creachadair/ffs v0.0.0-20220419003249-eb3987a12062 h1:BQ+/ay8RMKSukjecRLcO56fYSkuKYbUa4DpCQ+9Xydc=
+github.com/creachadair/ffs v0.0.0-20220419003249-eb3987a12062/go.mod h1:WXuemzxJi6QBMNqzrg2dzCO4EhxZeFV203bf8CfYUUw=
 github.com/creachadair/taskgroup v0.3.2/go.mod h1:wieWwecHVzsidg2CsUnFinW1faVN4+kq+TDlRJQ0Wbk=
 github.com/davecgh/go-spew v1.1.0 h1:ZDRjVQ15GmhC3fiQ8ni8+OwkZQO4DARzQgrnXU1Liz8=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
