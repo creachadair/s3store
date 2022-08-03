@@ -19,8 +19,7 @@ import (
 // Opener constructs a store from an address comprising a bucket name and
 // storage region, and an optional prefix, in the format:
 //
-//    [prefix@]bucket:region
-//
+//	[prefix@]bucket:region
 func Opener(_ context.Context, addr string) (blob.Store, error) {
 	parts := strings.SplitN(addr, "@", 2)
 	prefix, bucketRegion := "", parts[0]
