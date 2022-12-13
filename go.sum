@@ -1,7 +1,7 @@
-github.com/aws/aws-sdk-go v1.44.157 h1:JVBPpEWC8+yA7CbfAuTl/ZFFlHS3yoqWFqxFyTCISwg=
-github.com/aws/aws-sdk-go v1.44.157/go.mod h1:aVsgQcEevwlmQ7qHE9I3h+dtQgpqhFB+i8Phjh7fkwI=
-github.com/creachadair/ffs v0.0.0-20221211093811-34aef8098e36 h1:KHTf0qHKdoFBZz79sjiWM5X4hRNYN2ZHHADYV4WF9Zk=
-github.com/creachadair/ffs v0.0.0-20221211093811-34aef8098e36/go.mod h1:5BKEagl/PdY/mdlpoIlwOB+/hWgXkJ69sfgLVpvNZSs=
+github.com/aws/aws-sdk-go v1.44.158 h1:Q71ei9ijL3KuyQcLJA9TtuYy2gMLsLdVH5Q2ackBq3s=
+github.com/aws/aws-sdk-go v1.44.158/go.mod h1:aVsgQcEevwlmQ7qHE9I3h+dtQgpqhFB+i8Phjh7fkwI=
+github.com/creachadair/ffs v0.0.0-20221212045819-dff23ca2114e h1:6MSbmD8MM4GF18f+rMZiMg9XUdBzYBsc3RvLaVdBMC8=
+github.com/creachadair/ffs v0.0.0-20221212045819-dff23ca2114e/go.mod h1:5BKEagl/PdY/mdlpoIlwOB+/hWgXkJ69sfgLVpvNZSs=
 github.com/davecgh/go-spew v1.1.0 h1:ZDRjVQ15GmhC3fiQ8ni8+OwkZQO4DARzQgrnXU1Liz8=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/google/go-cmp v0.5.9 h1:O2Tfq5qg4qc4AmwVlvv0oLiVAGB7enBSJ2x2DqQFi38=
