@@ -199,6 +199,9 @@ func (s *Store) Len(ctx context.Context) (int64, error) {
 	return n, err
 }
 
+// Close implements part of the blob.Store interface. It is a no-op here.
+func (*Store) Close(_ context.Context) error { return nil }
+
 // Options are optional settings for a Store. A nil *Options is ready for use
 // and provides zero values for all fields.
 type Options struct {
