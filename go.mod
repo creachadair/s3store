@@ -3,8 +3,8 @@ module github.com/creachadair/s3store
 go 1.18
 
 require (
-	github.com/aws/aws-sdk-go v1.44.187
-	github.com/creachadair/ffs v0.0.0-20230123205934-71e1e411e7bd
+	github.com/aws/aws-sdk-go v1.44.190
+	github.com/creachadair/ffs v0.0.0-20230129190020-edf9315ecc3b
 )
 
 require (
