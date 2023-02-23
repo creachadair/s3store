@@ -101,7 +101,7 @@ func (s *Store) Put(ctx context.Context, opts blob.PutOptions) error {
 	if opts.Key == "" {
 		return blob.KeyNotFound(opts.Key)
 	} else if !opts.Replace {
-		if _, err := s.Size(ctx, opts.Key); err == nil {
+		if s.keyExists(ctx, opts.Key) == nil {
 			return blob.KeyExists(opts.Key)
 		}
 	}
@@ -118,7 +118,7 @@ func (s *Store) Put(ctx context.Context, opts blob.PutOptions) error {
 
 // Delete atomically removes a blob from the store.
 func (s *Store) Delete(ctx context.Context, key string) error {
-	if _, err := s.Size(ctx, key); err != nil {
+	if err := s.keyExists(ctx, key); err != nil {
 		return err
 	}
 	_, err := s.svc.DeleteObject(&s3.DeleteObjectInput{
@@ -128,24 +128,24 @@ func (s *Store) Delete(ctx context.Context, key string) error {
 	return err
 }
 
-// Size reports the size in bytes of the value stored for key.
-func (s *Store) Size(ctx context.Context, key string) (int64, error) {
+// keyExists returns nil if the specified key exists in the store.
+func (s *Store) keyExists(ctx context.Context, key string) error {
 	if key == "" {
-		return 0, blob.KeyNotFound(key) // S3 does not accept empty keys
+		return blob.KeyNotFound(key) // S3 does not accept empty keys
 	}
 	obj, err := s.svc.HeadObject(&s3.HeadObjectInput{
 		Bucket: &s.bucket,
 		Key:    aws.String(s.encodeKey(key)),
 	})
 	if aerr, ok := err.(awserr.Error); ok && isNotFound(aerr.Code()) {
-		return 0, blob.KeyNotFound(key)
+		return blob.KeyNotFound(key)
 	} else if err != nil {
-		return 0, err
+		return err
 	}
 	if obj.DeleteMarker != nil && *obj.DeleteMarker {
-		return 0, blob.KeyNotFound(key)
+		return blob.KeyNotFound(key)
 	}
-	return *obj.ContentLength, nil
+	return nil
 }
 
 // List calls f with each key in the store in lexicographic order, beginning
