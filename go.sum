@@ -1,5 +1,5 @@
-github.com/aws/aws-sdk-go v1.45.3 h1:Q8BksXg2ZUu2dCbA62+UCEtfvqsW8EO4tzt2IVeYAws=
-github.com/aws/aws-sdk-go v1.45.3/go.mod h1:aVsgQcEevwlmQ7qHE9I3h+dtQgpqhFB+i8Phjh7fkwI=
+github.com/aws/aws-sdk-go v1.45.11 h1:8qiSrA12+NRr+2MVpMApi3JxtiFFjDVU1NeWe+80bYg=
+github.com/aws/aws-sdk-go v1.45.11/go.mod h1:aVsgQcEevwlmQ7qHE9I3h+dtQgpqhFB+i8Phjh7fkwI=
 github.com/creachadair/ffs v0.0.2 h1:j9awEG+5qIWeI3+bCnXlbQ2d/w8QFLCZr/rSqtTN6aE=
 github.com/creachadair/ffs v0.0.2/go.mod h1:Ju4LDYjpZ++XLsAu/RU77Y7cvG7y7BFO7IDtT5ef0RE=
 github.com/creachadair/mds v0.2.3 h1:Svuw/AXrUUMxGHdRyuDsWJ36oFJRprqP8+iI86XzZjM=
