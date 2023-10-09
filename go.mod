@@ -5,7 +5,7 @@ go 1.21
 toolchain go1.21.0
 
 require (
-	github.com/aws/aws-sdk-go v1.45.15
+	github.com/aws/aws-sdk-go v1.45.24
 	github.com/creachadair/ffs v0.0.2
 )
 
