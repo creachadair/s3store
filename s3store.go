@@ -14,6 +14,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/creachadair/ffs/blob"
+	"github.com/creachadair/taskgroup"
 )
 
 // Opener constructs a store from an address comprising a bucket name and
@@ -190,13 +191,30 @@ func (s *Store) List(ctx context.Context, start string, f func(string) error) er
 
 // Len reports the number of keys currently in the store.
 func (s *Store) Len(ctx context.Context) (int64, error) {
-	// Is there a better way to count the objects in a bucket?
-	var n int64
-	err := s.List(ctx, "", func(string) error {
-		n++
-		return nil
-	})
-	return n, err
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	g := taskgroup.New(taskgroup.Trigger(cancel))
+
+	var total int64
+	c := taskgroup.NewCollector(func(v int64) { total += v })
+	for i := 0; i < 256; i++ {
+		pfx := string([]byte{byte(i)})
+		g.Go(c.Task(func() (int64, error) {
+			var count int64
+			err := s.List(ctx, pfx, func(key string) error {
+				if !strings.HasPrefix(key, pfx) {
+					return blob.ErrStopListing
+				}
+				count++
+				return nil
+			})
+			return count, err
+		}))
+	}
+	err := g.Wait()
+	c.Wait()
+
+	return total, err
 }
 
 // Close implements part of the blob.Store interface. It is a no-op here.
