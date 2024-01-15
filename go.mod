@@ -8,6 +8,7 @@ require (
 	github.com/aws/aws-sdk-go v1.49.20
 	github.com/creachadair/ffs v0.1.1
 	github.com/creachadair/taskgroup v0.7.1
+	golang.org/x/time v0.5.0
 )
 
 require (

@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"strings"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/creachadair/ffs/blob"
 	"github.com/creachadair/taskgroup"
+	"golang.org/x/time/rate"
 )
 
 // Opener constructs a store from an address comprising a bucket name and
@@ -31,7 +33,12 @@ func Opener(_ context.Context, addr string) (blob.Store, error) {
 	if len(parts) != 2 {
 		return nil, errors.New("invalid S3 address, requires bucket:region")
 	}
-	return New(parts[0], parts[1], &Options{KeyPrefix: prefix})
+	return New(parts[0], parts[1], &Options{
+		// Per https://docs.aws.amazon.com/AmazonS3/latest/userguide/optimizing-performance.html
+		// the rate limit for PUT/DELETE operations is 3500qps per prefix.
+		RateLimit: rate.NewLimiter(3500, 64),
+		KeyPrefix: prefix,
+	})
 }
 
 // A Store implements the blob.Store interface on an S3 bucket.
@@ -42,6 +49,7 @@ type Store struct {
 	session   *session.Session
 	svc       *s3.S3
 	keyPrefix string
+	limit     Waiter
 }
 
 // New creates a new Store that references the given bucket and region.
@@ -76,6 +84,7 @@ func New(bucket, region string, opts *Options) (*Store, error) {
 		session:   sess,
 		svc:       svc,
 		keyPrefix: opts.keyPrefix(),
+		limit:     opts.rateLimit(),
 	}, nil
 }
 
@@ -99,6 +108,9 @@ func (s *Store) Get(ctx context.Context, key string) ([]byte, error) {
 
 // Put writes a blob to the store.
 func (s *Store) Put(ctx context.Context, opts blob.PutOptions) error {
+	if !s.waitLimit(ctx) {
+		return fmt.Errorf("rate limit: %w", ctx.Err())
+	}
 	if opts.Key == "" {
 		return blob.KeyNotFound(opts.Key)
 	} else if !opts.Replace {
@@ -119,6 +131,9 @@ func (s *Store) Put(ctx context.Context, opts blob.PutOptions) error {
 
 // Delete atomically removes a blob from the store.
 func (s *Store) Delete(ctx context.Context, key string) error {
+	if !s.waitLimit(ctx) {
+		return fmt.Errorf("rate limit: %w", ctx.Err())
+	}
 	if err := s.keyExists(ctx, key); err != nil {
 		return err
 	}
@@ -227,8 +242,18 @@ type Options struct {
 	// A trailing slash ("/") is appended if one is not already present.
 	KeyPrefix string
 
+	// If set, us this rate limiter for requests to the store.
+	RateLimit Waiter
+
 	// An optional AWS configuration to use when constructing the session.
 	AWSConfig *aws.Config
+}
+
+// A Waiter blocks until a value is available or its context ends.
+type Waiter interface {
+	// Wait blocks until a value is available or ctx ends.
+	// It returns nil if a value is available, otherwise an error.
+	Wait(context.Context) error
 }
 
 func (o *Options) awsConfigs(region string) []*aws.Config {
@@ -247,6 +272,13 @@ func (o *Options) keyPrefix() string {
 		return o.KeyPrefix + "/"
 	}
 	return o.KeyPrefix
+}
+
+func (o *Options) rateLimit() Waiter {
+	if o == nil {
+		return nil
+	}
+	return o.RateLimit
 }
 
 // prevKey returns the string that is immediately lexicographically prior to
@@ -268,6 +300,13 @@ func prevKey(key string) string {
 
 func (s *Store) encodeKey(key string) string {
 	return s.keyPrefix + hex.EncodeToString([]byte(key))
+}
+
+func (s *Store) waitLimit(ctx context.Context) bool {
+	if s.limit == nil {
+		return true
+	}
+	return s.limit.Wait(ctx) == nil
 }
 
 var errNotMyKey = errors.New("not a blob key")
