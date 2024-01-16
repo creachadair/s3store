@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"path"
 	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -287,9 +288,6 @@ func (o *Options) keyPrefix() string {
 	if o == nil || o.KeyPrefix == "" {
 		return ""
 	}
-	if !strings.HasSuffix(o.KeyPrefix, "/") {
-		return o.KeyPrefix + "/"
-	}
 	return o.KeyPrefix
 }
 
@@ -325,7 +323,11 @@ func prevKey(key string) string {
 }
 
 func (s *Store) encodeKey(key string) string {
-	return s.keyPrefix + hex.EncodeToString([]byte(key))
+	tail := hex.EncodeToString([]byte(key))
+	if n := len(tail); n < 4 {
+		tail += "----"[n:] // ensure _ in prefix/xxx/_ is never empty and sorts early
+	}
+	return path.Join(s.keyPrefix, tail[:3], tail[3:])
 }
 
 func (s *Store) waitWrite(ctx context.Context) bool {
@@ -345,10 +347,18 @@ func (s *Store) waitRead(ctx context.Context) bool {
 var errNotMyKey = errors.New("not a blob key")
 
 func (s *Store) decodeKey(ekey string) (string, error) {
-	if !strings.HasPrefix(ekey, s.keyPrefix) {
+	if s.keyPrefix != "" {
+		tail, ok := strings.CutPrefix(ekey, s.keyPrefix+"/")
+		if !ok {
+			return "", errNotMyKey
+		}
+		ekey = tail
+	}
+	pre, post, ok := strings.Cut(ekey, "/")
+	if !ok || len(pre) != 3 || post == "" {
 		return "", errNotMyKey
 	}
-	key, err := hex.DecodeString(strings.TrimPrefix(ekey, s.keyPrefix))
+	key, err := hex.DecodeString(strings.TrimRight(pre+post, "-"))
 	if err != nil {
 		return "", err
 	}
