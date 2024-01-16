@@ -8,7 +8,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/url"
 	"path"
+	"strconv"
 	"strings"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -23,7 +25,12 @@ import (
 // Opener constructs a store from an address comprising a bucket name and
 // storage region, and an optional prefix, in the format:
 //
-//	[prefix@]bucket:region
+//	[prefix@]bucket:region[?query]
+//
+// Query parameters:
+//
+//	read_qps   : rate limit for read (GET) queries
+//	write_qps  : rate limit for write (PUT/DELETE) queries
 func Opener(_ context.Context, addr string) (blob.Store, error) {
 	prefix, bucketRegion, ok := strings.Cut(addr, "@")
 	if !ok {
@@ -33,19 +40,31 @@ func Opener(_ context.Context, addr string) (blob.Store, error) {
 	if !ok {
 		return nil, errors.New("invalid S3 address, requires bucket:region")
 	}
-
-	return New(bucket, region, &Options{
+	opts := &Options{
 		// Per https://docs.aws.amazon.com/AmazonS3/latest/userguide/optimizing-performance.html
 		// the rate limit for PUT/DELETE operations is 3500qps per prefix and
 		// the rate limit for GET operations is 5500qps per prefix.
 		// This appears to include the "empty" prefix for writing the root of the bucket.
-		// Moreover, it can take a while for the service to "scale up" to the
-		// full load, so here we choose a lower bound. These are the original limits that
-		// AWS advertised before the auto-scaling, which doesn't seem to work.
-		ReadRateLimit:  rate.NewLimiter(500, 1),
-		WriteRateLimit: rate.NewLimiter(300, 1),
-		KeyPrefix:      prefix,
-	})
+		// Moreover, it can take a while for the service to "scale up" to the full rate.
+		// Default to no limit.
+		ReadQPS:   0,
+		WriteQPS:  0,
+		KeyPrefix: prefix,
+	}
+	if base, query, ok := strings.Cut(region, "?"); ok {
+		region = base
+		q, err := url.ParseQuery(query)
+		if err != nil {
+			return nil, fmt.Errorf("invalid query: %w", err)
+		}
+		if v, ok := getQueryInt(q, "read_qps"); ok {
+			opts.ReadQPS = v
+		}
+		if v, ok := getQueryInt(q, "write_qps"); ok {
+			opts.WriteQPS = v
+		}
+	}
+	return New(bucket, region, opts)
 }
 
 // A Store implements the blob.Store interface on an S3 bucket.
@@ -56,8 +75,8 @@ type Store struct {
 	session   *session.Session
 	svc       *s3.S3
 	keyPrefix string
-	rlimit    Waiter
-	wlimit    Waiter
+	rlimit    waiter
+	wlimit    waiter
 }
 
 // New creates a new Store that references the given bucket and region.
@@ -262,16 +281,16 @@ type Options struct {
 	// A trailing slash ("/") is appended if one is not already present.
 	KeyPrefix string
 
-	// If set, us this rate limiter for requests to the store.
-	ReadRateLimit  Waiter
-	WriteRateLimit Waiter
+	// If set, us these rate limits apply to requests to the store.
+	ReadQPS  int
+	WriteQPS int
 
 	// An optional AWS configuration to use when constructing the session.
 	AWSConfig *aws.Config
 }
 
-// A Waiter blocks until a value is available or its context ends.
-type Waiter interface {
+// A waiter blocks until a value is available or its context ends.
+type waiter interface {
 	// Wait blocks until a value is available or ctx ends.
 	// It returns nil if a value is available, otherwise an error.
 	Wait(context.Context) error
@@ -292,18 +311,18 @@ func (o *Options) keyPrefix() string {
 	return o.KeyPrefix
 }
 
-func (o *Options) readRateLimit() Waiter {
-	if o == nil {
+func (o *Options) readRateLimit() waiter {
+	if o == nil || o.ReadQPS <= 0 {
 		return nil
 	}
-	return o.ReadRateLimit
+	return rate.NewLimiter(rate.Limit(o.ReadQPS), 1)
 }
 
-func (o *Options) writeRateLimit() Waiter {
-	if o == nil {
+func (o *Options) writeRateLimit() waiter {
+	if o == nil || o.WriteQPS <= 0 {
 		return nil
 	}
-	return o.WriteRateLimit
+	return rate.NewLimiter(rate.Limit(o.WriteQPS), 1)
 }
 
 // prevKey returns the string that is immediately lexicographically prior to
@@ -372,4 +391,13 @@ func isNotFound(code string) bool {
 		return true
 	}
 	return false
+}
+
+func getQueryInt(q url.Values, name string) (int, bool) {
+	if !q.Has(name) {
+		return 0, false
+	} else if v, err := strconv.Atoi(q.Get(name)); err == nil {
+		return v, true
+	}
+	return 0, false
 }

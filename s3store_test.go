@@ -44,6 +44,8 @@ func storeOrSkip(t *testing.T, prefix string) *s3store.Store {
 
 	t.Logf("Creating store client for bucket %q", *bucketName)
 	s, err := s3store.New(*bucketName, *bucketRegion, &s3store.Options{
+		ReadQPS:   3000,
+		WriteQPS:  1000,
 		AWSConfig: cfg,
 		KeyPrefix: prefix,
 	})
