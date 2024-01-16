@@ -40,9 +40,10 @@ func Opener(_ context.Context, addr string) (blob.Store, error) {
 		// the rate limit for GET operations is 5500qps per prefix.
 		// This appears to include the "empty" prefix for writing the root of the bucket.
 		// Moreover, it can take a while for the service to "scale up" to the
-		// full load, so here we choose a lower bound.
-		ReadRateLimit:  rate.NewLimiter(1000, 1),
-		WriteRateLimit: rate.NewLimiter(500, 1),
+		// full load, so here we choose a lower bound. These are the original limits that
+		// AWS advertised before the auto-scaling, which doesn't seem to work.
+		ReadRateLimit:  rate.NewLimiter(500, 1),
+		WriteRateLimit: rate.NewLimiter(300, 1),
 		KeyPrefix:      prefix,
 	})
 }
