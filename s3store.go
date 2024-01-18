@@ -4,12 +4,10 @@ package s3store
 import (
 	"bytes"
 	"context"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
 	"net/url"
-	"path"
 	"strconv"
 	"strings"
 
@@ -18,6 +16,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/creachadair/ffs/blob"
+	"github.com/creachadair/ffs/storage/hexkey"
 	"github.com/creachadair/taskgroup"
 	"golang.org/x/time/rate"
 )
@@ -71,12 +70,12 @@ func Opener(_ context.Context, addr string) (blob.Store, error) {
 // Since S3 does not support empty keys, access to an empty key will
 // report blob.ErrKeyNotFound as required by the interface.
 type Store struct {
-	bucket    string
-	session   *session.Session
-	svc       *s3.S3
-	keyPrefix string
-	rlimit    waiter
-	wlimit    waiter
+	bucket  string
+	session *session.Session
+	svc     *s3.S3
+	key     hexkey.Config
+	rlimit  waiter
+	wlimit  waiter
 }
 
 // New creates a new Store that references the given bucket and region.
@@ -107,12 +106,12 @@ func New(bucket, region string, opts *Options) (*Store, error) {
 		}
 	}
 	return &Store{
-		bucket:    bucket,
-		session:   sess,
-		svc:       svc,
-		keyPrefix: opts.keyPrefix(),
-		rlimit:    opts.readRateLimit(),
-		wlimit:    opts.writeRateLimit(),
+		bucket:  bucket,
+		session: sess,
+		svc:     svc,
+		key:     hexkey.Config{Prefix: opts.keyPrefix(), Shard: 3},
+		rlimit:  opts.readRateLimit(),
+		wlimit:  opts.writeRateLimit(),
 	}, nil
 }
 
@@ -126,7 +125,7 @@ func (s *Store) Get(ctx context.Context, key string) ([]byte, error) {
 
 	obj, err := s.svc.GetObject(&s3.GetObjectInput{
 		Bucket: &s.bucket,
-		Key:    aws.String(s.encodeKey(key)),
+		Key:    aws.String(s.key.Encode(key)),
 	})
 	if aerr, ok := err.(awserr.Error); ok && isNotFound(aerr.Code()) {
 		return nil, blob.KeyNotFound(key)
@@ -150,7 +149,7 @@ func (s *Store) Put(ctx context.Context, opts blob.PutOptions) error {
 	if !s.waitWrite(ctx) {
 		return fmt.Errorf("rate limit: %w", ctx.Err())
 	}
-	awsKey := aws.String(s.encodeKey(opts.Key))
+	awsKey := aws.String(s.key.Encode(opts.Key))
 	if _, err := s.svc.PutObject(&s3.PutObjectInput{
 		Bucket: &s.bucket,
 		Key:    awsKey,
@@ -171,7 +170,7 @@ func (s *Store) Delete(ctx context.Context, key string) error {
 	}
 	_, err := s.svc.DeleteObject(&s3.DeleteObjectInput{
 		Bucket: &s.bucket,
-		Key:    aws.String(s.encodeKey(key)),
+		Key:    aws.String(s.key.Encode(key)),
 	})
 	return err
 }
@@ -186,7 +185,7 @@ func (s *Store) keyExists(ctx context.Context, key string) error {
 
 	obj, err := s.svc.HeadObject(&s3.HeadObjectInput{
 		Bucket: &s.bucket,
-		Key:    aws.String(s.encodeKey(key)),
+		Key:    aws.String(s.key.Encode(key)),
 	})
 	if aerr, ok := err.(awserr.Error); ok && isNotFound(aerr.Code()) {
 		return blob.KeyNotFound(key)
@@ -204,7 +203,7 @@ func (s *Store) keyExists(ctx context.Context, key string) error {
 func (s *Store) List(ctx context.Context, start string, f func(string) error) error {
 	req := &s3.ListObjectsV2Input{
 		Bucket:     &s.bucket,
-		StartAfter: aws.String(s.encodeKey(prevKey(start))),
+		StartAfter: aws.String(s.key.Encode(prevKey(start))),
 
 		// N.B. The S3 API really does mean "after" the selected key, so if we
 		// want to use start as a starting point we have to find a key prior to
@@ -219,8 +218,8 @@ func (s *Store) List(ctx context.Context, start string, f func(string) error) er
 			return err
 		}
 		for _, obj := range pg.Contents {
-			key, err := s.decodeKey(*obj.Key)
-			if err == errNotMyKey {
+			key, err := s.key.Decode(*obj.Key)
+			if errors.Is(err, hexkey.ErrNotMyKey) {
 				continue // some other key in this bucket; ignore it
 			} else if err != nil {
 				return err
@@ -342,14 +341,6 @@ func prevKey(key string) string {
 	return string(pk)
 }
 
-func (s *Store) encodeKey(key string) string {
-	tail := hex.EncodeToString([]byte(key))
-	if n := len(tail); n < 4 {
-		tail += "----"[n:] // ensure _ in prefix/xxx/_ is never empty and sorts early
-	}
-	return path.Join(s.keyPrefix, tail[:3], tail[3:])
-}
-
 func (s *Store) waitWrite(ctx context.Context) bool {
 	if s.wlimit == nil {
 		return true
@@ -362,27 +353,6 @@ func (s *Store) waitRead(ctx context.Context) bool {
 		return true
 	}
 	return s.rlimit.Wait(ctx) == nil
-}
-
-var errNotMyKey = errors.New("not a blob key")
-
-func (s *Store) decodeKey(ekey string) (string, error) {
-	if s.keyPrefix != "" {
-		tail, ok := strings.CutPrefix(ekey, s.keyPrefix+"/")
-		if !ok {
-			return "", errNotMyKey
-		}
-		ekey = tail
-	}
-	pre, post, ok := strings.Cut(ekey, "/")
-	if !ok || len(pre) != 3 || post == "" {
-		return "", errNotMyKey
-	}
-	key, err := hex.DecodeString(strings.TrimRight(pre+post, "-"))
-	if err != nil {
-		return "", err
-	}
-	return string(key), nil
 }
 
 func isNotFound(code string) bool {
