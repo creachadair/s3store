@@ -265,8 +265,6 @@ func (s *Store) Len(ctx context.Context) (int64, error) {
 		}))
 	}
 	err := g.Wait()
-	c.Wait()
-
 	return total, err
 }
 
