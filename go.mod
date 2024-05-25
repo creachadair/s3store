@@ -1,8 +1,6 @@
 module github.com/creachadair/s3store
 
-go 1.21
-
-toolchain go1.21.0
+go 1.22
 
 require (
 	github.com/aws/aws-sdk-go v1.53.5
