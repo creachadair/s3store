@@ -1,7 +1,7 @@
-github.com/aws/aws-sdk-go v1.53.16 h1:8oZjKQO/ml1WLUZw5hvF7pvYjPf8o9f57Wldoy/q9Qc=
-github.com/aws/aws-sdk-go v1.53.16/go.mod h1:LF8svs817+Nz+DmiMQKTO3ubZ/6IaTpq3TjupRn3Eqk=
-github.com/creachadair/ffs v0.4.3 h1:BjHqsdqu7/cwXVAookNDm7x7fWp8p58c8m0d1+/4Jno=
-github.com/creachadair/ffs v0.4.3/go.mod h1:XnnqYGbVxzZHN2Dh876DdYOMSdh2u7WOo4lZXvsflIU=
+github.com/aws/aws-sdk-go v1.54.6 h1:HEYUib3yTt8E6vxjMWM3yAq5b+qjj/6aKA62mkgux9g=
+github.com/aws/aws-sdk-go v1.54.6/go.mod h1:eRwEWoyTWFMVYVQzKMNHWP5/RV4xIUGMQfXQHfHkpNU=
+github.com/creachadair/ffs v0.4.4 h1:oR2oGpHyT1scoefWo3+qa9zvqW1Px35Z52qTgGkjma4=
+github.com/creachadair/ffs v0.4.4/go.mod h1:SyJMASifvx/4gX7R2jKaIPogZJ19U7aX4s4iIoDRa4Q=
 github.com/creachadair/mds v0.14.7 h1:VkY1pop2sqIfbDEeB9FObh/STRd/DNHyNtlE55Z95UQ=
 github.com/creachadair/mds v0.14.7/go.mod h1:4vrFYUzTXMJpMBU+OA292I6IUxKWCCfZkgXg+/kBZMo=
 github.com/creachadair/taskgroup v0.9.0 h1:kzXSea5C7R5DtnKFBOTEW3hvmCkiVnRkODMVDMgSS6k=
@@ -19,10 +19,6 @@ github.com/jmespath/go-jmespath/internal/testify v1.5.1/go.mod h1:L3OGu8Wl2/fWfC
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
-golang.org/x/net v0.17.0 h1:pVaXccu2ozPjCXewfr1S7xza/zcXTity9cCdXQYSjIM=
-golang.org/x/net v0.17.0/go.mod h1:NxSsAGuq816PNPmqtQdLE42eU2Fs7NoRIZrHJAlaCOE=
-golang.org/x/text v0.13.0 h1:ablQoSUd0tRdKxZewP80B+BaqeKJuVhuRxj/dkrun3k=
-golang.org/x/text v0.13.0/go.mod h1:TvPlkZtksWOMsz7fbANvkp4WM8x/WCo/om8BMLbz+aE=
 golang.org/x/time v0.5.0 h1:o7cqy6amK/52YcAKIPlM3a+Fpj35zvRj2TP+e1xFSfk=
 golang.org/x/time v0.5.0/go.mod h1:3BpzKBy/shNhVucY/MWOyx10tF3SFh9QdLuxbVysPQM=
 gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
