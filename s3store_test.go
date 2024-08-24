@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/creachadair/ffs/blob"
 	"github.com/creachadair/ffs/blob/storetest"
 	"github.com/creachadair/s3store"
@@ -24,7 +24,7 @@ var (
 		"AWS region to use for the testing bucket")
 )
 
-func configOrSkip(t *testing.T) *aws.Config {
+func configOrSkip(t *testing.T) []func(*config.LoadOptions) error {
 	t.Helper()
 
 	// N.B. We do not use environment credentials so that we don't accidentally
@@ -34,8 +34,8 @@ func configOrSkip(t *testing.T) *aws.Config {
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
 		t.Skip("Skipping test because credentials are not set")
 	}
-	creds := credentials.NewStaticCredentials(parts[0], parts[1], "")
-	return aws.NewConfig().WithCredentials(creds)
+	creds := credentials.NewStaticCredentialsProvider(parts[0], parts[1], "" /* session */)
+	return []func(*config.LoadOptions) error{config.WithCredentialsProvider(creds)}
 }
 
 func storeOrSkip(t *testing.T, prefix string) *s3store.Store {
@@ -46,8 +46,9 @@ func storeOrSkip(t *testing.T, prefix string) *s3store.Store {
 	s, err := s3store.New(*bucketName, *bucketRegion, &s3store.Options{
 		ReadQPS:   3000,
 		WriteQPS:  1000,
-		AWSConfig: cfg,
 		KeyPrefix: prefix,
+
+		AWSConfigOptions: cfg,
 	})
 	if err != nil {
 		t.Fatalf("New failed: %v", err)

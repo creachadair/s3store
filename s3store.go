@@ -8,13 +8,14 @@ import (
 	"fmt"
 	"io"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/awserr"
-	"github.com/aws/aws-sdk-go/aws/session"
-	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/creachadair/ffs/blob"
 	"github.com/creachadair/ffs/storage/hexkey"
 	"github.com/creachadair/taskgroup"
@@ -70,12 +71,11 @@ func Opener(_ context.Context, addr string) (blob.Store, error) {
 // Since S3 does not support empty keys, access to an empty key will
 // report blob.ErrKeyNotFound as required by the interface.
 type Store struct {
-	bucket  string
-	session *session.Session
-	svc     *s3.S3
-	key     hexkey.Config
-	rlimit  waiter
-	wlimit  waiter
+	bucket   string
+	key      hexkey.Config
+	s3Client *s3.Client
+	rlimit   waiter
+	wlimit   waiter
 }
 
 // New creates a new Store that references the given bucket and region.
@@ -83,35 +83,36 @@ type Store struct {
 //
 // By default, New constructs an AWS session using ambient credentials from the
 // environment or from a configuration file profile. To specify credentials
-// from another source, set the AWSConfig field of the options.
+// from another source, set the [Options.AWSConfigOptions] field.
 func New(bucket, region string, opts *Options) (*Store, error) {
-	sess, err := session.NewSession(opts.awsConfigs(region)...)
+	ctx := context.Background()
+	cfg, err := config.LoadDefaultConfig(ctx, opts.awsOptions(region)...)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("load AWS config: %w", err)
 	}
-	svc := s3.New(sess)
-	_, err = svc.CreateBucket(&s3.CreateBucketInput{
-		Bucket: aws.String(bucket),
+	cli := s3.NewFromConfig(cfg)
+	_, err = cli.CreateBucket(ctx, &s3.CreateBucketInput{
+		Bucket: &bucket,
+
+		CreateBucketConfiguration: &types.CreateBucketConfiguration{
+			LocationConstraint: types.BucketLocationConstraint(region),
+		},
 	})
 	if err != nil {
-		aerr, ok := err.(awserr.Error)
-		if !ok {
-			return nil, err
-		}
-		switch aerr.Code() {
-		case s3.ErrCodeBucketAlreadyExists, s3.ErrCodeBucketAlreadyOwnedByYou:
-			// OK, this is our bucket.
-		default:
-			return nil, err
+		var e1 *types.BucketAlreadyExists
+		var e2 *types.BucketAlreadyOwnedByYou
+		if errors.As(err, &e1) || errors.As(err, &e2) {
+			// OK, this is our bucket
+		} else {
+			return nil, fmt.Errorf("create bucket %q: %w", bucket, err)
 		}
 	}
 	return &Store{
-		bucket:  bucket,
-		session: sess,
-		svc:     svc,
-		key:     hexkey.Config{Prefix: opts.keyPrefix(), Shard: 3},
-		rlimit:  opts.readRateLimit(),
-		wlimit:  opts.writeRateLimit(),
+		bucket:   bucket,
+		s3Client: cli,
+		key:      hexkey.Config{Prefix: opts.keyPrefix(), Shard: 3},
+		rlimit:   opts.readRateLimit(),
+		wlimit:   opts.writeRateLimit(),
 	}, nil
 }
 
@@ -123,11 +124,11 @@ func (s *Store) Get(ctx context.Context, key string) ([]byte, error) {
 		return nil, fmt.Errorf("rate limit: %w", ctx.Err())
 	}
 
-	obj, err := s.svc.GetObject(&s3.GetObjectInput{
+	obj, err := s.s3Client.GetObject(ctx, &s3.GetObjectInput{
 		Bucket: &s.bucket,
 		Key:    aws.String(s.key.Encode(key)),
 	})
-	if aerr, ok := err.(awserr.Error); ok && isNotFound(aerr.Code()) {
+	if isNotExist(err) {
 		return nil, blob.KeyNotFound(key)
 	} else if err != nil {
 		return nil, err
@@ -149,10 +150,9 @@ func (s *Store) Put(ctx context.Context, opts blob.PutOptions) error {
 	if !s.waitWrite(ctx) {
 		return fmt.Errorf("rate limit: %w", ctx.Err())
 	}
-	awsKey := aws.String(s.key.Encode(opts.Key))
-	if _, err := s.svc.PutObject(&s3.PutObjectInput{
+	if _, err := s.s3Client.PutObject(ctx, &s3.PutObjectInput{
 		Bucket: &s.bucket,
-		Key:    awsKey,
+		Key:    aws.String(s.key.Encode(opts.Key)),
 		Body:   bytes.NewReader(opts.Data),
 	}); err != nil {
 		return err
@@ -168,7 +168,7 @@ func (s *Store) Delete(ctx context.Context, key string) error {
 	if !s.waitWrite(ctx) {
 		return fmt.Errorf("rate limit: %w", ctx.Err())
 	}
-	_, err := s.svc.DeleteObject(&s3.DeleteObjectInput{
+	_, err := s.s3Client.DeleteObject(ctx, &s3.DeleteObjectInput{
 		Bucket: &s.bucket,
 		Key:    aws.String(s.key.Encode(key)),
 	})
@@ -183,11 +183,11 @@ func (s *Store) keyExists(ctx context.Context, key string) error {
 		return fmt.Errorf("rate limit: %w", ctx.Err())
 	}
 
-	obj, err := s.svc.HeadObject(&s3.HeadObjectInput{
+	obj, err := s.s3Client.HeadObject(ctx, &s3.HeadObjectInput{
 		Bucket: &s.bucket,
 		Key:    aws.String(s.key.Encode(key)),
 	})
-	if aerr, ok := err.(awserr.Error); ok && isNotFound(aerr.Code()) {
+	if isNotExist(err) {
 		return blob.KeyNotFound(key)
 	} else if err != nil {
 		return err
@@ -213,7 +213,7 @@ func (s *Store) List(ctx context.Context, start string, f func(string) error) er
 		if !s.waitRead(ctx) {
 			return fmt.Errorf("rate limit: %w", ctx.Err())
 		}
-		pg, err := s.svc.ListObjectsV2(req)
+		pg, err := s.s3Client.ListObjectsV2(ctx, req)
 		if err != nil {
 			return err
 		}
@@ -282,8 +282,8 @@ type Options struct {
 	ReadQPS  int
 	WriteQPS int
 
-	// An optional AWS configuration to use when constructing the session.
-	AWSConfig *aws.Config
+	// Optional AWS config loader options.
+	AWSConfigOptions []func(*config.LoadOptions) error
 }
 
 // A waiter blocks until a value is available or its context ends.
@@ -293,12 +293,14 @@ type waiter interface {
 	Wait(context.Context) error
 }
 
-func (o *Options) awsConfigs(region string) []*aws.Config {
-	base := aws.NewConfig().WithRegion(region)
-	if o == nil || o.AWSConfig == nil {
-		return []*aws.Config{base}
+func (o *Options) awsOptions(region string) (out []func(*config.LoadOptions) error) {
+	if region != "" {
+		out = append(out, config.WithRegion(region))
 	}
-	return []*aws.Config{base, o.AWSConfig}
+	if o != nil {
+		out = append(out, o.AWSConfigOptions...)
+	}
+	return out
 }
 
 func (o *Options) keyPrefix() string {
@@ -353,14 +355,6 @@ func (s *Store) waitRead(ctx context.Context) bool {
 	return s.rlimit.Wait(ctx) == nil
 }
 
-func isNotFound(code string) bool {
-	switch code {
-	case "NotFound", s3.ErrCodeNoSuchKey:
-		return true
-	}
-	return false
-}
-
 func getQueryInt(q url.Values, name string) (int, bool) {
 	if !q.Has(name) {
 		return 0, false
@@ -368,4 +362,15 @@ func getQueryInt(q url.Values, name string) (int, bool) {
 		return v, true
 	}
 	return 0, false
+}
+
+// isNotExist reports whether err is an error indicating the requested resource
+// was not found, taking into account S3 and standard library types.
+func isNotExist(err error) bool {
+	var e1 *types.NotFound
+	var e2 *types.NoSuchKey
+	if errors.As(err, &e1) || errors.As(err, &e2) {
+		return true
+	}
+	return errors.Is(err, os.ErrNotExist)
 }
