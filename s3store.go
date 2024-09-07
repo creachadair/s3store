@@ -249,10 +249,10 @@ func (s *Store) Len(ctx context.Context) (int64, error) {
 
 	// Note we don't need to check rate limits here, because List already does.
 	var total int64
-	c := taskgroup.NewCollector(func(v int64) { total += v })
+	c := taskgroup.Collect(func(v int64) { total += v })
 	for i := 0; i < 256; i++ {
 		pfx := string([]byte{byte(i)})
-		g.Go(c.Task(func() (int64, error) {
+		g.Go(c.Call(func() (int64, error) {
 			var count int64
 			err := s.List(ctx, pfx, func(key string) error {
 				if !strings.HasPrefix(key, pfx) {
