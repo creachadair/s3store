@@ -10,7 +10,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/credentials v1.17.41
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.65.3
 	github.com/creachadair/ffs v0.6.6
-	github.com/creachadair/taskgroup v0.11.0
+	github.com/creachadair/taskgroup v0.12.0
 	golang.org/x/time v0.7.0
 )
 
