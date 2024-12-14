@@ -34,8 +34,8 @@ github.com/aws/aws-sdk-go-v2/service/sts v1.33.2 h1:s4074ZO1Hk8qv65GqNXqDjmkf4HS
 github.com/aws/aws-sdk-go-v2/service/sts v1.33.2/go.mod h1:mVggCnIWoM09jP71Wh+ea7+5gAp53q+49wDFs1SW5z8=
 github.com/aws/smithy-go v1.22.1 h1:/HPHZQ0g7f4eUeK6HKglFz8uwVfZKgoI25rb/J+dnro=
 github.com/aws/smithy-go v1.22.1/go.mod h1:irrKGvNn1InZwb2d7fkIRNucdfwR8R+Ts3wxYa/cJHg=
-github.com/creachadair/ffs v0.6.8 h1:KIYijz0xl5FQR8hskAaQq+Oo2mj5dEOIxUg48D+MzG0=
-github.com/creachadair/ffs v0.6.8/go.mod h1:WT9FcRqI6aFoK7Fi/g/6U8uU4ybuEf2j+laiQ61tp0s=
+github.com/creachadair/ffs v0.7.0 h1:m6zUAKOxzA9EotuzfenDBl9/aJ8zt6Ls3yD6X9jbw78=
+github.com/creachadair/ffs v0.7.0/go.mod h1:brk+jY1hwFq+ZbxXHKMXyGN3tF4vxp2XicrvVc1zL7w=
 github.com/creachadair/mds v0.22.0 h1:IRm4fWRKF9Pi4k3DEfgdlhMMYVxyef9FFall4r0GP4A=
 github.com/creachadair/mds v0.22.0/go.mod h1:ArfS0vPHoLV/SzuIzoqTEZfoYmac7n9Cj8XPANHocvw=
 github.com/creachadair/taskgroup v0.13.2 h1:3KyqakBuFsm3KkXi/9XIb0QcA8tEzLHLgaoidf0MdVc=

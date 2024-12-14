@@ -38,7 +38,7 @@ func configOrSkip(t *testing.T) []func(*config.LoadOptions) error {
 	return []func(*config.LoadOptions) error{config.WithCredentialsProvider(creds)}
 }
 
-func storeOrSkip(t *testing.T, prefix string) *s3store.Store {
+func storeOrSkip(t *testing.T, prefix string) *s3store.KV {
 	t.Helper()
 	cfg := configOrSkip(t)
 
