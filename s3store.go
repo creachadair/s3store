@@ -1,4 +1,4 @@
-// Package s3store implements the [blob.KV] interface on Amazon S3.
+// Package s3store implements the [blob.StoreCloser] interface on Amazon S3.
 package s3store
 
 import (
