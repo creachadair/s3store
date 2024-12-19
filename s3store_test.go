@@ -38,16 +38,13 @@ func configOrSkip(t *testing.T) []func(*config.LoadOptions) error {
 	return []func(*config.LoadOptions) error{config.WithCredentialsProvider(creds)}
 }
 
-func storeOrSkip(t *testing.T, prefix string) *s3store.KV {
+func storeOrSkip(t *testing.T, prefix string) s3store.Store {
 	t.Helper()
 	cfg := configOrSkip(t)
 
 	t.Logf("Creating store client for bucket %q", *bucketName)
 	s, err := s3store.New(*bucketName, *bucketRegion, &s3store.Options{
-		ReadQPS:   3000,
-		WriteQPS:  1000,
-		KeyPrefix: prefix,
-
+		KeyPrefix:        prefix,
 		AWSConfigOptions: cfg,
 	})
 	if err != nil {
@@ -59,11 +56,14 @@ func storeOrSkip(t *testing.T, prefix string) *s3store.KV {
 func TestProbe(t *testing.T) {
 	s := storeOrSkip(t, "testprobe")
 
-	const testKey = "test probe key"
 	ctx := context.Background()
-	err := s.Put(ctx, blob.PutOptions{
+	kv := storetest.SubKeyspace(t, ctx, s, "")
+
+	const testKey = "test probe key"
+	const text = "This is a blob to manually verify the store settings.\n"
+	err := kv.Put(ctx, blob.PutOptions{
 		Key:     testKey,
-		Data:    []byte("This is a blob to manually verify the store settings.\n"),
+		Data:    []byte(text),
 		Replace: false,
 	})
 	if errors.Is(err, blob.ErrKeyExists) {
@@ -71,8 +71,13 @@ func TestProbe(t *testing.T) {
 	} else if err != nil {
 		t.Errorf("Put failed: %v", err)
 	}
-
-	if err := s.Delete(ctx, testKey); err != nil {
+	got, err := kv.Get(ctx, testKey)
+	if err != nil {
+		t.Errorf("Get %q failed: %v", testKey, err)
+	} else if s := string(got); s != text {
+		t.Errorf("Get %q: got %q, want %q", testKey, s, text)
+	}
+	if err := kv.Delete(ctx, testKey); err != nil {
 		t.Errorf("Delete %q failed: %v", testKey, err)
 	}
 }
