@@ -4,18 +4,21 @@ package s3store
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"strings"
+	"sync"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/creachadair/ffs/blob"
 	"github.com/creachadair/ffs/storage/hexkey"
+	"github.com/creachadair/mds/value"
 	"github.com/creachadair/taskgroup"
 )
 
@@ -23,7 +26,7 @@ import (
 // storage region, and an optional prefix, in the format:
 //
 //	[prefix@]bucket:region[?query]
-func Opener(_ context.Context, addr string) (blob.KV, error) {
+func Opener(_ context.Context, addr string) (blob.StoreCloser, error) {
 	prefix, bucketRegion, ok := strings.Cut(addr, "@")
 	if !ok {
 		prefix, bucketRegion = bucketRegion, prefix
@@ -35,26 +38,76 @@ func Opener(_ context.Context, addr string) (blob.KV, error) {
 	return New(bucket, region, &Options{KeyPrefix: prefix})
 }
 
-// A KV implements the [blob.KV] interface on an S3 bucket.
-// Since S3 does not support empty keys, access to an empty key will
-// report [blob.ErrKeyNotFound] as required by the interface.
-type KV struct {
-	bucket   string
-	key      hexkey.Config
-	s3Client *s3.Client
+// Store implements the [blob.StoreCloser] interface over an S3 bucket.
+type Store struct {
+	*dbMonitor
 }
 
-// New creates a new [kV] that references the given bucket and region.
+type dbMonitor struct {
+	client *s3.Client
+	bucket string
+	key    hexkey.Config
+
+	μ    sync.Mutex
+	subs map[string]*dbMonitor
+	kvs  map[string]KV
+}
+
+// Keyspace implements a method of the [blob.Store] interface.
+// A successful result has a concrete type of [KV].
+func (d *dbMonitor) Keyspace(ctx context.Context, name string) (blob.KV, error) {
+	d.μ.Lock()
+	defer d.μ.Unlock()
+
+	kv, ok := d.kvs[name]
+	if !ok {
+		kv = KV{
+			client: d.client,
+			bucket: d.bucket,
+			key:    d.key.WithPrefix(path.Join(d.key.Prefix, "_"+hex.EncodeToString([]byte(name)))),
+		}
+		if name == "" {
+			kv.key = d.key
+		}
+		d.kvs[name] = kv
+	}
+	return kv, nil
+}
+
+// Sub implements a method of the [blob.Store] interface.
+func (d *dbMonitor) Sub(ctx context.Context, name string) (blob.Store, error) {
+	d.μ.Lock()
+	defer d.μ.Unlock()
+
+	sub, ok := d.subs[name]
+	if !ok {
+		sub = &dbMonitor{
+			client: d.client,
+			bucket: d.bucket,
+			key:    d.key.WithPrefix(path.Join(d.key.Prefix, "_"+hex.EncodeToString([]byte(name)))),
+			subs:   make(map[string]*dbMonitor),
+			kvs:    make(map[string]KV),
+		}
+		d.subs[name] = sub
+	}
+	return sub, nil
+}
+
+// Close implements a method of [blob.StoreCloser].
+// This implementation always reports nil.
+func (s Store) Close(context.Context) error { return nil }
+
+// New creates a new [Store] that references the given bucket and region.
 // If opts == nil, default options are provided as described on [Options].
 //
 // By default, New constructs an AWS session using ambient credentials from the
 // environment or from a configuration file profile. To specify credentials
 // from another source, set the [Options.AWSConfigOptions] field.
-func New(bucket, region string, opts *Options) (*KV, error) {
+func New(bucket, region string, opts *Options) (Store, error) {
 	ctx := context.Background()
 	cfg, err := config.LoadDefaultConfig(ctx, opts.awsOptions(region)...)
 	if err != nil {
-		return nil, fmt.Errorf("load AWS config: %w", err)
+		return Store{}, fmt.Errorf("load AWS config: %w", err)
 	}
 	cli := s3.NewFromConfig(cfg)
 	_, err = cli.CreateBucket(ctx, &s3.CreateBucketInput{
@@ -70,25 +123,36 @@ func New(bucket, region string, opts *Options) (*KV, error) {
 		if errors.As(err, &e1) || errors.As(err, &e2) {
 			// OK, this is our bucket
 		} else {
-			return nil, fmt.Errorf("create bucket %q: %w", bucket, err)
+			return Store{}, fmt.Errorf("create bucket %q: %w", bucket, err)
 		}
 	}
-	return &KV{
-		bucket:   bucket,
-		s3Client: cli,
-		key:      hexkey.Config{Prefix: opts.keyPrefix(), Shard: 3},
-	}, nil
+	return Store{dbMonitor: &dbMonitor{
+		client: cli,
+		bucket: bucket,
+		key:    hexkey.Config{Prefix: opts.keyPrefix(), Shard: 3},
+		subs:   make(map[string]*dbMonitor),
+		kvs:    make(map[string]KV),
+	}}, nil
+}
+
+// A KV implements the [blob.KV] interface on an S3 bucket.
+// Since S3 does not support empty keys, access to an empty key will
+// report [blob.ErrKeyNotFound] as required by the interface.
+type KV struct {
+	client *s3.Client
+	bucket string
+	key    hexkey.Config
 }
 
 // Get fetches the contents of a blob from the store.
-func (s *KV) Get(ctx context.Context, key string) ([]byte, error) {
+func (s KV) Get(ctx context.Context, key string) ([]byte, error) {
 	if key == "" {
 		return nil, blob.KeyNotFound(key)
 	}
 
-	obj, err := s.s3Client.GetObject(ctx, &s3.GetObjectInput{
+	obj, err := s.client.GetObject(ctx, &s3.GetObjectInput{
 		Bucket: &s.bucket,
-		Key:    aws.String(s.key.Encode(key)),
+		Key:    value.Ptr(s.key.Encode(key)),
 	})
 	if isNotExist(err) {
 		return nil, blob.KeyNotFound(key)
@@ -100,7 +164,7 @@ func (s *KV) Get(ctx context.Context, key string) ([]byte, error) {
 }
 
 // Put writes a blob to the store.
-func (s *KV) Put(ctx context.Context, opts blob.PutOptions) error {
+func (s KV) Put(ctx context.Context, opts blob.PutOptions) error {
 	if opts.Key == "" {
 		return blob.KeyNotFound(opts.Key)
 	} else if !opts.Replace {
@@ -109,9 +173,9 @@ func (s *KV) Put(ctx context.Context, opts blob.PutOptions) error {
 		}
 	}
 
-	if _, err := s.s3Client.PutObject(ctx, &s3.PutObjectInput{
+	if _, err := s.client.PutObject(ctx, &s3.PutObjectInput{
 		Bucket: &s.bucket,
-		Key:    aws.String(s.key.Encode(opts.Key)),
+		Key:    value.Ptr(s.key.Encode(opts.Key)),
 		Body:   bytes.NewReader(opts.Data),
 	}); err != nil {
 		return err
@@ -120,34 +184,34 @@ func (s *KV) Put(ctx context.Context, opts blob.PutOptions) error {
 }
 
 // Delete atomically removes a blob from the store.
-func (s *KV) Delete(ctx context.Context, key string) error {
+func (s KV) Delete(ctx context.Context, key string) error {
 	if err := s.keyExists(ctx, key); err != nil {
 		return err
 	}
 
-	_, err := s.s3Client.DeleteObject(ctx, &s3.DeleteObjectInput{
+	_, err := s.client.DeleteObject(ctx, &s3.DeleteObjectInput{
 		Bucket: &s.bucket,
-		Key:    aws.String(s.key.Encode(key)),
+		Key:    value.Ptr(s.key.Encode(key)),
 	})
 	return err
 }
 
 // keyExists returns nil if the specified key exists in the store.
-func (s *KV) keyExists(ctx context.Context, key string) error {
+func (s KV) keyExists(ctx context.Context, key string) error {
 	if key == "" {
 		return blob.KeyNotFound(key) // S3 does not accept empty keys
 	}
 
-	obj, err := s.s3Client.HeadObject(ctx, &s3.HeadObjectInput{
+	obj, err := s.client.HeadObject(ctx, &s3.HeadObjectInput{
 		Bucket: &s.bucket,
-		Key:    aws.String(s.key.Encode(key)),
+		Key:    value.Ptr(s.key.Encode(key)),
 	})
 	if isNotExist(err) {
 		return blob.KeyNotFound(key)
 	} else if err != nil {
 		return err
 	}
-	if obj.DeleteMarker != nil && *obj.DeleteMarker {
+	if value.At(obj.DeleteMarker) {
 		return blob.KeyNotFound(key)
 	}
 	return nil
@@ -155,17 +219,17 @@ func (s *KV) keyExists(ctx context.Context, key string) error {
 
 // List calls f with each key in the store in lexicographic order, beginning
 // with the first key greater than or equal to start.
-func (s *KV) List(ctx context.Context, start string, f func(string) error) error {
+func (s KV) List(ctx context.Context, start string, f func(string) error) error {
 	req := &s3.ListObjectsV2Input{
 		Bucket:     &s.bucket,
-		StartAfter: aws.String(s.key.Encode(prevKey(start))),
+		StartAfter: value.Ptr(s.key.Encode(prevKey(start))),
 
 		// N.B. The S3 API really does mean "after" the selected key, so if we
 		// want to use start as a starting point we have to find a key prior to
 		// it in the sequence.
 	}
 	for {
-		pg, err := s.s3Client.ListObjectsV2(ctx, req)
+		pg, err := s.client.ListObjectsV2(ctx, req)
 		if err != nil {
 			return err
 		}
@@ -194,7 +258,7 @@ func (s *KV) List(ctx context.Context, start string, f func(string) error) error
 }
 
 // Len reports the number of keys currently in the store.
-func (s *KV) Len(ctx context.Context) (int64, error) {
+func (s KV) Len(ctx context.Context) (int64, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	g := taskgroup.New(cancel)
@@ -219,9 +283,6 @@ func (s *KV) Len(ctx context.Context) (int64, error) {
 	err := g.Wait()
 	return total, err
 }
-
-// Close implements part of the [blob.KV] interface. It is a no-op here.
-func (*KV) Close(_ context.Context) error { return nil }
 
 // Options are optional settings for a [KV]. A nil *Options is ready for use
 // and provides zero values for all fields.
