@@ -7,9 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/url"
 	"os"
-	"strconv"
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -19,18 +17,12 @@ import (
 	"github.com/creachadair/ffs/blob"
 	"github.com/creachadair/ffs/storage/hexkey"
 	"github.com/creachadair/taskgroup"
-	"golang.org/x/time/rate"
 )
 
 // Opener constructs a store from an address comprising a bucket name and
 // storage region, and an optional prefix, in the format:
 //
 //	[prefix@]bucket:region[?query]
-//
-// Query parameters:
-//
-//	read_qps   : rate limit for read (GET) queries
-//	write_qps  : rate limit for write (PUT/DELETE) queries
 func Opener(_ context.Context, addr string) (blob.KV, error) {
 	prefix, bucketRegion, ok := strings.Cut(addr, "@")
 	if !ok {
@@ -40,31 +32,7 @@ func Opener(_ context.Context, addr string) (blob.KV, error) {
 	if !ok {
 		return nil, errors.New("invalid S3 address, requires bucket:region")
 	}
-	opts := &Options{
-		// Per https://docs.aws.amazon.com/AmazonS3/latest/userguide/optimizing-performance.html
-		// the rate limit for PUT/DELETE operations is 3500qps per prefix and
-		// the rate limit for GET operations is 5500qps per prefix.
-		// This appears to include the "empty" prefix for writing the root of the bucket.
-		// Moreover, it can take a while for the service to "scale up" to the full rate.
-		// Default to no limit.
-		ReadQPS:   0,
-		WriteQPS:  0,
-		KeyPrefix: prefix,
-	}
-	if base, query, ok := strings.Cut(region, "?"); ok {
-		region = base
-		q, err := url.ParseQuery(query)
-		if err != nil {
-			return nil, fmt.Errorf("invalid query: %w", err)
-		}
-		if v, ok := getQueryInt(q, "read_qps"); ok {
-			opts.ReadQPS = v
-		}
-		if v, ok := getQueryInt(q, "write_qps"); ok {
-			opts.WriteQPS = v
-		}
-	}
-	return New(bucket, region, opts)
+	return New(bucket, region, &Options{KeyPrefix: prefix})
 }
 
 // A KV implements the [blob.KV] interface on an S3 bucket.
@@ -74,8 +42,6 @@ type KV struct {
 	bucket   string
 	key      hexkey.Config
 	s3Client *s3.Client
-	rlimit   waiter
-	wlimit   waiter
 }
 
 // New creates a new [kV] that references the given bucket and region.
@@ -111,8 +77,6 @@ func New(bucket, region string, opts *Options) (*KV, error) {
 		bucket:   bucket,
 		s3Client: cli,
 		key:      hexkey.Config{Prefix: opts.keyPrefix(), Shard: 3},
-		rlimit:   opts.readRateLimit(),
-		wlimit:   opts.writeRateLimit(),
 	}, nil
 }
 
@@ -120,8 +84,6 @@ func New(bucket, region string, opts *Options) (*KV, error) {
 func (s *KV) Get(ctx context.Context, key string) ([]byte, error) {
 	if key == "" {
 		return nil, blob.KeyNotFound(key)
-	} else if !s.waitRead(ctx) {
-		return nil, fmt.Errorf("rate limit: %w", ctx.Err())
 	}
 
 	obj, err := s.s3Client.GetObject(ctx, &s3.GetObjectInput{
@@ -147,9 +109,6 @@ func (s *KV) Put(ctx context.Context, opts blob.PutOptions) error {
 		}
 	}
 
-	if !s.waitWrite(ctx) {
-		return fmt.Errorf("rate limit: %w", ctx.Err())
-	}
 	if _, err := s.s3Client.PutObject(ctx, &s3.PutObjectInput{
 		Bucket: &s.bucket,
 		Key:    aws.String(s.key.Encode(opts.Key)),
@@ -165,9 +124,7 @@ func (s *KV) Delete(ctx context.Context, key string) error {
 	if err := s.keyExists(ctx, key); err != nil {
 		return err
 	}
-	if !s.waitWrite(ctx) {
-		return fmt.Errorf("rate limit: %w", ctx.Err())
-	}
+
 	_, err := s.s3Client.DeleteObject(ctx, &s3.DeleteObjectInput{
 		Bucket: &s.bucket,
 		Key:    aws.String(s.key.Encode(key)),
@@ -179,8 +136,6 @@ func (s *KV) Delete(ctx context.Context, key string) error {
 func (s *KV) keyExists(ctx context.Context, key string) error {
 	if key == "" {
 		return blob.KeyNotFound(key) // S3 does not accept empty keys
-	} else if !s.waitRead(ctx) {
-		return fmt.Errorf("rate limit: %w", ctx.Err())
 	}
 
 	obj, err := s.s3Client.HeadObject(ctx, &s3.HeadObjectInput{
@@ -210,9 +165,6 @@ func (s *KV) List(ctx context.Context, start string, f func(string) error) error
 		// it in the sequence.
 	}
 	for {
-		if !s.waitRead(ctx) {
-			return fmt.Errorf("rate limit: %w", ctx.Err())
-		}
 		pg, err := s.s3Client.ListObjectsV2(ctx, req)
 		if err != nil {
 			return err
@@ -286,13 +238,6 @@ type Options struct {
 	AWSConfigOptions []func(*config.LoadOptions) error
 }
 
-// A waiter blocks until a value is available or its context ends.
-type waiter interface {
-	// Wait blocks until a value is available or ctx ends.
-	// It returns nil if a value is available, otherwise an error.
-	Wait(context.Context) error
-}
-
 func (o *Options) awsOptions(region string) (out []func(*config.LoadOptions) error) {
 	if region != "" {
 		out = append(out, config.WithRegion(region))
@@ -310,20 +255,6 @@ func (o *Options) keyPrefix() string {
 	return o.KeyPrefix
 }
 
-func (o *Options) readRateLimit() waiter {
-	if o == nil || o.ReadQPS <= 0 {
-		return nil
-	}
-	return rate.NewLimiter(rate.Limit(o.ReadQPS), 1)
-}
-
-func (o *Options) writeRateLimit() waiter {
-	if o == nil || o.WriteQPS <= 0 {
-		return nil
-	}
-	return rate.NewLimiter(rate.Limit(o.WriteQPS), 1)
-}
-
 // prevKey returns the string that is immediately lexicographically prior to
 // key, or "" if key == "".
 func prevKey(key string) string {
@@ -339,29 +270,6 @@ func prevKey(key string) string {
 		}
 	}
 	return string(pk)
-}
-
-func (s *KV) waitWrite(ctx context.Context) bool {
-	if s.wlimit == nil {
-		return true
-	}
-	return s.wlimit.Wait(ctx) == nil
-}
-
-func (s *KV) waitRead(ctx context.Context) bool {
-	if s.rlimit == nil {
-		return true
-	}
-	return s.rlimit.Wait(ctx) == nil
-}
-
-func getQueryInt(q url.Values, name string) (int, bool) {
-	if !q.Has(name) {
-		return 0, false
-	} else if v, err := strconv.Atoi(q.Get(name)); err == nil {
-		return v, true
-	}
-	return 0, false
 }
 
 // isNotExist reports whether err is an error indicating the requested resource
