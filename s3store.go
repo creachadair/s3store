@@ -97,7 +97,7 @@ func (d *dbMonitor) Sub(ctx context.Context, name string) (blob.Store, error) {
 // This implementation always reports nil.
 func (s Store) Close(context.Context) error { return nil }
 
-// New creates a new [kV] that references the given bucket and region.
+// New creates a new [Store] that references the given bucket and region.
 // If opts == nil, default options are provided as described on [Options].
 //
 // By default, New constructs an AWS session using ambient credentials from the
