@@ -11,13 +11,14 @@ import (
 	"os"
 	"path"
 	"strings"
-	"sync"
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/creachadair/ffs/blob"
+	"github.com/creachadair/ffs/storage/dbkey"
 	"github.com/creachadair/ffs/storage/hexkey"
+	"github.com/creachadair/ffs/storage/monitor"
 	"github.com/creachadair/mds/value"
 	"github.com/creachadair/taskgroup"
 )
@@ -40,57 +41,19 @@ func Opener(_ context.Context, addr string) (blob.StoreCloser, error) {
 
 // Store implements the [blob.StoreCloser] interface over an S3 bucket.
 type Store struct {
-	*dbMonitor
+	*monitor.M[dbState, KV]
 }
 
-type dbMonitor struct {
+type dbState struct {
 	client *s3.Client
 	bucket string
 	key    hexkey.Config
-
-	μ    sync.Mutex
-	subs map[string]*dbMonitor
-	kvs  map[string]KV
 }
 
-// Keyspace implements a method of the [blob.Store] interface.
-// A successful result has a concrete type of [KV].
-func (d *dbMonitor) Keyspace(ctx context.Context, name string) (blob.KV, error) {
-	d.μ.Lock()
-	defer d.μ.Unlock()
+func (d dbState) addName(name string) dbState { d.key = addName(d.key, name); return d }
 
-	kv, ok := d.kvs[name]
-	if !ok {
-		kv = KV{
-			client: d.client,
-			bucket: d.bucket,
-			key:    d.key.WithPrefix(path.Join(d.key.Prefix, "_"+hex.EncodeToString([]byte(name)))),
-		}
-		if name == "" {
-			kv.key = d.key
-		}
-		d.kvs[name] = kv
-	}
-	return kv, nil
-}
-
-// Sub implements a method of the [blob.Store] interface.
-func (d *dbMonitor) Sub(ctx context.Context, name string) (blob.Store, error) {
-	d.μ.Lock()
-	defer d.μ.Unlock()
-
-	sub, ok := d.subs[name]
-	if !ok {
-		sub = &dbMonitor{
-			client: d.client,
-			bucket: d.bucket,
-			key:    d.key.WithPrefix(path.Join(d.key.Prefix, "_"+hex.EncodeToString([]byte(name)))),
-			subs:   make(map[string]*dbMonitor),
-			kvs:    make(map[string]KV),
-		}
-		d.subs[name] = sub
-	}
-	return sub, nil
+func addName(key hexkey.Config, name string) hexkey.Config {
+	return key.WithPrefix(path.Join(key.Prefix, "_"+hex.EncodeToString([]byte(name))))
 }
 
 // Close implements a method of [blob.StoreCloser].
@@ -126,13 +89,19 @@ func New(bucket, region string, opts *Options) (Store, error) {
 			return Store{}, fmt.Errorf("create bucket %q: %w", bucket, err)
 		}
 	}
-	return Store{dbMonitor: &dbMonitor{
-		client: cli,
-		bucket: bucket,
-		key:    hexkey.Config{Prefix: opts.keyPrefix(), Shard: 3},
-		subs:   make(map[string]*dbMonitor),
-		kvs:    make(map[string]KV),
-	}}, nil
+	return Store{M: monitor.New(monitor.Config[dbState, KV]{
+		DB: dbState{
+			client: cli,
+			bucket: bucket,
+			key:    hexkey.Config{Prefix: opts.keyPrefix(), Shard: 3},
+		},
+		NewKV: func(_ context.Context, db dbState, _ dbkey.Prefix, name string) (KV, error) {
+			return KV{client: db.client, bucket: db.bucket, key: addName(db.key, name)}, nil
+		},
+		NewSub: func(_ context.Context, db dbState, _ dbkey.Prefix, name string) (dbState, error) {
+			return db.addName(name), nil
+		},
+	})}, nil
 }
 
 // A KV implements the [blob.KV] interface on an S3 bucket.
