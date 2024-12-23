@@ -191,7 +191,7 @@ func (s KV) keyExists(ctx context.Context, key string) error {
 func (s KV) List(ctx context.Context, start string, f func(string) error) error {
 	req := &s3.ListObjectsV2Input{
 		Bucket:     &s.bucket,
-		StartAfter: value.Ptr(s.key.Encode(prevKey(start))),
+		StartAfter: value.Ptr(s.key.Start(prevKey(start))),
 
 		// N.B. The S3 API really does mean "after" the selected key, so if we
 		// want to use start as a starting point we have to find a key prior to
