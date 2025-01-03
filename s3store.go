@@ -132,6 +132,24 @@ func (s KV) Get(ctx context.Context, key string) ([]byte, error) {
 	return io.ReadAll(obj.Body)
 }
 
+// Stat checks for the presence and size of the specified objects.
+func (s KV) Stat(ctx context.Context, keys ...string) (blob.StatMap, error) {
+	out := make(blob.StatMap)
+	for _, key := range keys {
+		obj, err := s.client.HeadObject(ctx, &s3.HeadObjectInput{
+			Bucket: &s.bucket,
+			Key:    value.Ptr(s.key.Encode(key)),
+		})
+		if isNotExist(err) {
+			continue
+		} else if err != nil {
+			return nil, err
+		}
+		out[key] = blob.Stat{Size: value.At(obj.ContentLength)}
+	}
+	return out, nil
+}
+
 // Put writes a blob to the store.
 func (s KV) Put(ctx context.Context, opts blob.PutOptions) error {
 	if opts.Key == "" {
