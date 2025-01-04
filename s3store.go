@@ -132,11 +132,11 @@ func (s KV) Get(ctx context.Context, key string) ([]byte, error) {
 	return io.ReadAll(obj.Body)
 }
 
-// Stat checks for the presence and size of the specified objects.
-func (s KV) Stat(ctx context.Context, keys ...string) (blob.StatMap, error) {
-	out := make(blob.StatMap)
+// Has implements a method of the [blob.KV] interface.
+func (s KV) Has(ctx context.Context, keys ...string) (blob.KeySet, error) {
+	var out blob.KeySet
 	for _, key := range keys {
-		obj, err := s.client.HeadObject(ctx, &s3.HeadObjectInput{
+		_, err := s.client.HeadObject(ctx, &s3.HeadObjectInput{
 			Bucket: &s.bucket,
 			Key:    value.Ptr(s.key.Encode(key)),
 		})
@@ -145,7 +145,7 @@ func (s KV) Stat(ctx context.Context, keys ...string) (blob.StatMap, error) {
 		} else if err != nil {
 			return nil, err
 		}
-		out[key] = blob.Stat{Size: value.At(obj.ContentLength)}
+		out.Add(key)
 	}
 	return out, nil
 }

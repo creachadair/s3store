@@ -8,7 +8,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.28.7
 	github.com/aws/aws-sdk-go-v2/credentials v1.17.48
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.72.0
-	github.com/creachadair/ffs v0.10.0
+	github.com/creachadair/ffs v0.11.0
 	github.com/creachadair/mds v0.22.1
 	github.com/creachadair/taskgroup v0.13.2
 )
