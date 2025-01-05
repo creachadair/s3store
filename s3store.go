@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"iter"
 	"os"
 	"path"
 	"strings"
@@ -206,42 +207,43 @@ func (s KV) keyExists(ctx context.Context, key string) error {
 
 // List calls f with each key in the store in lexicographic order, beginning
 // with the first key greater than or equal to start.
-func (s KV) List(ctx context.Context, start string, f func(string) error) error {
-	req := &s3.ListObjectsV2Input{
-		Bucket:     &s.bucket,
-		StartAfter: value.Ptr(s.key.Start(prevKey(start))),
+func (s KV) List(ctx context.Context, start string) iter.Seq2[string, error] {
+	return func(yield func(string, error) bool) {
+		req := &s3.ListObjectsV2Input{
+			Bucket:     &s.bucket,
+			StartAfter: value.Ptr(s.key.Start(prevKey(start))),
 
-		// N.B. The S3 API really does mean "after" the selected key, so if we
-		// want to use start as a starting point we have to find a key prior to
-		// it in the sequence.
+			// N.B. The S3 API really does mean "after" the selected key, so if we
+			// want to use start as a starting point we have to find a key prior to
+			// it in the sequence.
+		}
+		for {
+			pg, err := s.client.ListObjectsV2(ctx, req)
+			if err != nil {
+				yield("", err)
+				return
+			}
+			for _, obj := range pg.Contents {
+				key, err := s.key.Decode(*obj.Key)
+				if errors.Is(err, hexkey.ErrNotMyKey) {
+					continue // some other key in this bucket; ignore it
+				} else if err != nil {
+					yield("", err)
+					return
+				}
+				if key < start {
+					continue
+				}
+				if !yield(key, nil) {
+					return
+				}
+			}
+			if pg.NextContinuationToken == nil {
+				break
+			}
+			req.ContinuationToken = pg.NextContinuationToken
+		}
 	}
-	for {
-		pg, err := s.client.ListObjectsV2(ctx, req)
-		if err != nil {
-			return err
-		}
-		for _, obj := range pg.Contents {
-			key, err := s.key.Decode(*obj.Key)
-			if errors.Is(err, hexkey.ErrNotMyKey) {
-				continue // some other key in this bucket; ignore it
-			} else if err != nil {
-				return err
-			}
-			if key < start {
-				continue
-			}
-			if err := f(key); err == blob.ErrStopListing {
-				return nil
-			} else if err != nil {
-				return err
-			}
-		}
-		if pg.NextContinuationToken == nil {
-			break
-		}
-		req.ContinuationToken = pg.NextContinuationToken
-	}
-	return nil
 }
 
 // Len reports the number of keys currently in the store.
@@ -257,14 +259,15 @@ func (s KV) Len(ctx context.Context) (int64, error) {
 		pfx := string([]byte{byte(i)})
 		c.Call(func() (int64, error) {
 			var count int64
-			err := s.List(ctx, pfx, func(key string) error {
-				if !strings.HasPrefix(key, pfx) {
-					return blob.ErrStopListing
+			for key, err := range s.List(ctx, pfx) {
+				if err != nil {
+					return 0, err
+				} else if !strings.HasPrefix(key, pfx) {
+					break
 				}
 				count++
-				return nil
-			})
-			return count, err
+			}
+			return count, nil
 		})
 	}
 	err := g.Wait()
