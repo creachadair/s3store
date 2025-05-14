@@ -13,6 +13,7 @@ import (
 	"path"
 	"strings"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
@@ -296,6 +297,7 @@ func (o *Options) awsOptions(region string) (out []func(*config.LoadOptions) err
 	if o != nil {
 		out = append(out, o.AWSConfigOptions...)
 	}
+	out = append(out, config.WithResponseChecksumValidation(aws.ResponseChecksumValidationWhenRequired))
 	return out
 }
 
