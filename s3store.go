@@ -256,7 +256,7 @@ func (s KV) Len(ctx context.Context) (int64, error) {
 	// Note we don't need to check rate limits here, because List already does.
 	var total int64
 	c := taskgroup.Gather(g.Go, func(v int64) { total += v })
-	for i := 0; i < 256; i++ {
+	for i := range 256 {
 		pfx := string([]byte{byte(i)})
 		c.Call(func() (int64, error) {
 			var count int64
