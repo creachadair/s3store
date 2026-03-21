@@ -52,10 +52,10 @@ type dbState struct {
 	key    hexkey.Config
 }
 
-func (d dbState) addName(name string) dbState { d.key = addName(d.key, name); return d }
+func (d dbState) addSubName(name string) dbState { d.key = addName(d.key, ":", name); return d }
 
-func addName(key hexkey.Config, name string) hexkey.Config {
-	return key.WithPrefix(path.Join(key.Prefix, "_"+hex.EncodeToString([]byte(name))))
+func addName(key hexkey.Config, tag, name string) hexkey.Config {
+	return key.WithPrefix(path.Join(key.Prefix, tag+hex.EncodeToString([]byte(name))))
 }
 
 // Close implements a method of [blob.StoreCloser].
@@ -98,10 +98,10 @@ func New(bucket, region string, opts *Options) (Store, error) {
 			key:    hexkey.Config{Prefix: opts.keyPrefix(), Shard: 3},
 		},
 		NewKV: func(_ context.Context, db dbState, _ dbkey.Prefix, name string) (KV, error) {
-			return KV{client: db.client, bucket: db.bucket, key: addName(db.key, name)}, nil
+			return KV{client: db.client, bucket: db.bucket, key: addName(db.key, "_", name)}, nil
 		},
 		NewSub: func(_ context.Context, db dbState, _ dbkey.Prefix, name string) (dbState, error) {
-			return db.addName(name), nil
+			return db.addSubName(name), nil
 		},
 	})}, nil
 }
