@@ -38,7 +38,15 @@ func Opener(_ context.Context, addr string) (blob.StoreCloser, error) {
 	if !ok {
 		return nil, errors.New("invalid S3 address, requires bucket:region")
 	}
-	return New(bucket, region, &Options{KeyPrefix: prefix})
+	return New(bucket, region, &Options{
+		KeyPrefix: prefix,
+
+		AWSConfigOptions: []config.LoadOptionsFunc{
+			config.WithRetryMode(aws.RetryModeAdaptive),
+			config.WithRetryMaxAttempts(8),
+			config.WithResponseChecksumValidation(aws.ResponseChecksumValidationWhenRequired),
+		},
+	})
 }
 
 // Store implements the [blob.StoreCloser] interface over an S3 bucket.
@@ -287,7 +295,7 @@ type Options struct {
 	WriteQPS int
 
 	// Optional AWS config loader options.
-	AWSConfigOptions []func(*config.LoadOptions) error
+	AWSConfigOptions []config.LoadOptionsFunc
 }
 
 func (o *Options) awsOptions(region string) (out []func(*config.LoadOptions) error) {
@@ -295,9 +303,10 @@ func (o *Options) awsOptions(region string) (out []func(*config.LoadOptions) err
 		out = append(out, config.WithRegion(region))
 	}
 	if o != nil {
-		out = append(out, o.AWSConfigOptions...)
+		for _, opt := range o.AWSConfigOptions {
+			out = append(out, (func(*config.LoadOptions) error)(opt))
+		}
 	}
-	out = append(out, config.WithResponseChecksumValidation(aws.ResponseChecksumValidationWhenRequired))
 	return out
 }
 

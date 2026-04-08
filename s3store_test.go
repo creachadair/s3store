@@ -24,7 +24,7 @@ var (
 		"AWS region to use for the testing bucket")
 )
 
-func configOrSkip(t *testing.T) []func(*config.LoadOptions) error {
+func configOrSkip(t *testing.T) []config.LoadOptionsFunc {
 	t.Helper()
 
 	// N.B. We do not use environment credentials so that we don't accidentally
@@ -35,7 +35,7 @@ func configOrSkip(t *testing.T) []func(*config.LoadOptions) error {
 		t.Skip("Skipping test because credentials are not set")
 	}
 	creds := credentials.NewStaticCredentialsProvider(parts[0], parts[1], "" /* session */)
-	return []func(*config.LoadOptions) error{config.WithCredentialsProvider(creds)}
+	return []config.LoadOptionsFunc{config.WithCredentialsProvider(creds)}
 }
 
 func storeOrSkip(t *testing.T, prefix string) s3store.Store {
