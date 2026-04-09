@@ -290,10 +290,6 @@ type Options struct {
 	// A trailing slash ("/") is appended if one is not already present.
 	KeyPrefix string
 
-	// If set, us these rate limits apply to requests to the store.
-	ReadQPS  int
-	WriteQPS int
-
 	// Optional AWS config loader options.
 	AWSConfigOptions []config.LoadOptionsFunc
 }
