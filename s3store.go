@@ -220,7 +220,7 @@ func (s KV) List(ctx context.Context, start string) iter.Seq2[string, error] {
 	return func(yield func(string, error) bool) {
 		req := &s3.ListObjectsV2Input{
 			Bucket:     &s.bucket,
-			StartAfter: value.Ptr(s.key.Start(prevKey(start))),
+			StartAfter: value.Ptr(prevKey(s.key.Start(start))),
 
 			// N.B. The S3 API really does mean "after" the selected key, so if we
 			// want to use start as a starting point we have to find a key prior to
