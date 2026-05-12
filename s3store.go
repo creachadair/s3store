@@ -218,16 +218,21 @@ func (s KV) keyExists(ctx context.Context, key string) error {
 // with the first key greater than or equal to start.
 func (s KV) List(ctx context.Context, start string) iter.Seq2[string, error] {
 	return func(yield func(string, error) bool) {
-		req := &s3.ListObjectsV2Input{
+		in := &s3.ListObjectsV2Input{
 			Bucket:     &s.bucket,
 			StartAfter: value.Ptr(prevKey(s.key.Start(start))),
+			MaxKeys:    value.Ptr[int32](256),
 
 			// N.B. The S3 API really does mean "after" the selected key, so if we
 			// want to use start as a starting point we have to find a key prior to
 			// it in the sequence.
 		}
-		for {
-			pg, err := s.client.ListObjectsV2(ctx, req)
+		if s.key.Prefix != "" {
+			in.Prefix = value.Ptr(s.key.Prefix + "/")
+		}
+		req := s3.NewListObjectsV2Paginator(s.client, in)
+		for req.HasMorePages() {
+			pg, err := req.NextPage(ctx)
 			if err != nil {
 				yield("", err)
 				return
@@ -247,10 +252,6 @@ func (s KV) List(ctx context.Context, start string) iter.Seq2[string, error] {
 					return
 				}
 			}
-			if pg.NextContinuationToken == nil {
-				break
-			}
-			req.ContinuationToken = pg.NextContinuationToken
 		}
 	}
 }
