@@ -57,7 +57,7 @@ func TestProbe(t *testing.T) {
 	s := storeOrSkip(t, "testprobe")
 
 	ctx := context.Background()
-	kv := storetest.SubKV(t, ctx, s, "")
+	kv := storetest.SubKV(t, s, "")
 
 	const testKey = "test probe key"
 	const text = "This is a blob to manually verify the store settings.\n"
