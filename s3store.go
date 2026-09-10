@@ -133,12 +133,14 @@ func (s KV) Get(ctx context.Context, key string) ([]byte, error) {
 		Bucket: &s.bucket,
 		Key:    value.Ptr(s.key.Encode(key)),
 	})
+	if obj != nil && obj.Body != nil {
+		defer func() { io.Copy(io.Discard, obj.Body); obj.Body.Close() }()
+	}
 	if isNotExist(err) {
 		return nil, blob.KeyNotFound(key)
 	} else if err != nil {
 		return nil, err
 	}
-	defer obj.Body.Close()
 	return io.ReadAll(obj.Body)
 }
 
